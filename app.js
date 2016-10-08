@@ -5,6 +5,9 @@ var logger = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 
+var config = require('./config');
+var twilioNotifications = require('./middleware/twilioNotifications');
+
 var routes = require('./routes/index');
 var users = require('./routes/users');
 
@@ -33,6 +36,9 @@ app.use(function(req, res, next) {
 });
 
 // error handlers
+
+// Mount middleware to notify Twilio of errors
+app.use(twilioNotifications.notifyOnError);
 
 // development error handler
 // will print stacktrace
