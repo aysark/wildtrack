@@ -81,6 +81,7 @@ function createOrUpdateIncident(req, data) {
   client.hgetall(incidentId, function(err, reply) {
     if (reply) {
       const incident = {
+        id: incidentId,
         longitude: data.longitude,
         latitude: data.latitude,
         humanActivity: reply.humanActivity ? reply.humanActivity+data.humanActivity : "",
@@ -90,6 +91,7 @@ function createOrUpdateIncident(req, data) {
       client.hmset(incidentId, incident, redis.print);
     } else {
       const incident = {
+        id: incidentId,
         timestamp: Date.now(),
         longitude: data.longitude,
         latitude: data.latitude,
@@ -105,19 +107,24 @@ function createOrUpdateIncident(req, data) {
 function determineConversationState(req) {
   let stateWhat = req.session.stateWhat || 0;
   let stateWhere = req.session.stateWhere || 0;
+  let statePhotoNeeded = req.session.statePhotoNeeded || 0;
   let stateAnon = req.session.stateAnon || 0;
 
   const localization = {
     "stateWhat": {
       "English" : "What do you see?",
-      "Swahili" : "Unaona nini? Je, unahitaji kuzungumza na mgambo?"
+      "Swahili" : "Unaona nini?"
     },
     "stateWhere": {
       "English" : "Please describe the exact location or send GPS Coordinates",
-      "Swahili" : "Kuelezea eneo halisi"
+      "Swahili" : "Kuelezea eneo halisi au kutuma GPS kuratibu"
+    },
+    "statePhotoNeeded": {
+      "English" : "Can you please send a photo over MMS?",
+      "Swahili" : "Je, unaweza tafadhali tuma picha zaidi MMS?"
     },
     "stateAnon": {
-      "English": "Thank you! Your report is anonymous unless you reply YES to opt out",
+      "English": "Thank you! Your report is anonymous unless you reply YES to join the rewards program",
       "Swahili": "Asante! ripoti yako ni bila majina isipokuwa wewe kujibu NDIYO kwa kujiunga na mpango tuzo"
     },
     "stateAnonNo": {
@@ -136,6 +143,9 @@ function determineConversationState(req) {
   } else if (stateWhere == 0) {
     stateWhere = 1;
     messageStr = localization["stateWhere"][(req.session.language)];
+  } else if (statePhotoNeeded == 0) {
+    statePhotoNeeded = 1;
+    messageStr = localization["statePhotoNeeded"][(req.session.language)];
   } else if (stateAnon == 0) {
     stateAnon = 1;
     messageStr = localization["stateAnon"][(req.session.language)];
@@ -149,6 +159,7 @@ function determineConversationState(req) {
   return {
     "stateWhat" : stateWhat,
     "stateWhere" : stateWhere,
+    "statePhotoNeeded" : statePhotoNeeded,
     "stateAnon" : stateAnon,
     message: messageStr
   }
@@ -217,19 +228,17 @@ router.post('/sms', function(req, res, next) {
   // console.log(req.session);
 
   const twiml = new twilio.TwimlResponse();
-  let photoIncluded = req.session.photoIncluded || 0;
-  let textIncluded = req.session.textIncluded || 0;
-  let sessionId = req.session.identifier || uuid.v4();
+  let sessionIdentifier = req.session.identifier || uuid.v4();
 
-  const minute = 120000;
+  const minute = 180000;
   req.session.cookie.expires = new Date(Date.now() + minute);
   req.session.cookie.maxAge = minute;
-  req.session.identifier = sessionId;
+  req.session.identifier = sessionIdentifier;
 
   // determine language
   let language = "English";
 
-  if (req.session.language == null && req.body.Body.length >= 3) {
+  if (req.session.language == null && req.body.Body.length >= 2) {
     var options = {
       url: 'https://westus.api.cognitive.microsoft.com/text/analytics/v2.0/languages',
       headers: {
@@ -253,6 +262,7 @@ router.post('/sms', function(req, res, next) {
         let message = s.message;
         req.session.stateWhat = s.stateWhat;
         req.session.stateWhere = s.stateWhere;
+        req.session.statePhotoNeeded = s.statePhotoNeeded;
         req.session.stateAnon = s.stateAnon;
 
         const location = checkForLocationStopword(req);
@@ -267,7 +277,7 @@ router.post('/sms', function(req, res, next) {
           language: language
         });
 
-        if (message.length >= 3) {
+        if (message.length >= 2) {
           twiml.message(message);
           res.writeHead(200, {'Content-Type': 'text/xml'});
           res.end(twiml.toString());
@@ -284,6 +294,7 @@ router.post('/sms', function(req, res, next) {
     let message = s.message;
     req.session.stateWhat = s.stateWhat;
     req.session.stateWhere = s.stateWhere;
+    req.session.statePhotoNeeded = s.statePhotoNeeded;
     req.session.stateAnon = s.stateAnon;
 
     const location = checkForLocationStopword(req);
@@ -298,7 +309,7 @@ router.post('/sms', function(req, res, next) {
       language: language
     });
 
-    if (message.length >= 3) {
+    if (message.length >= 2) {
       twiml.message(message);
       res.writeHead(200, {'Content-Type': 'text/xml'});
       res.end(twiml.toString());
