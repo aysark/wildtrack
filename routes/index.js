@@ -46,26 +46,43 @@ function detectLanguage(text) {
   request(options, callback);
 }
 
-function createOrUpdateIncident(req) {
-  client.get("profile_"+req.body.From, function(err, reply) {
-      if (reply) {
-        // TODO
-      } else {
-        const profile = {
-          country: req.body.FromCountry,
-          state: req.body.FromState,
-          city: req.body.FromCity
-        }
-        client.hmset("profile"+req.body.From, profile);
+function createOrUpdateIncident(req, data) {
+  let profileId = "profile_"+req.body.From;
+  client.hgetall(profileId, function(err, reply) {
+    if (reply) {
+      // TODO
+    } else {
+      const profile = {
+        country: req.body.FromCountry,
+        state: req.body.FromState,
+        city: req.body.FromCity
       }
+      client.hmset(profileId, profile);
+    }
   });
 
-  client.get("incident_"+req.body.From+"_"+req.session.id, function(err, reply) {
-      if (reply) {
-        // TODO
-      } else {
-        // TODO
-      }
+  let incidentId = "incident_"+req.body.From+"_"+req.session.identifier;
+  client.hgetall(incidentId, function(err, reply) {
+    if (reply) {
+      const incident = {
+        longitude: data.longitude,
+        latitude: data.latitude,
+        humanActivity: reply.humanActivity ? reply.humanActivity+data.humanActivity : "",
+        animals: reply.animals ? reply.animals+data.animals : "",
+        language: data.language
+      };
+      client.hmset(incidentId, incident, redis.print);
+    } else {
+      const incident = {
+        timestamp: Date.now(),
+        longitude: data.longitude,
+        latitude: data.latitude,
+        humanActivity: data.humanActivity,
+        animals: data.animals,
+        language:data.language
+      };
+      client.hmset(incidentId, incident, redis.print);
+    }
   });
 }
 
@@ -126,12 +143,15 @@ function checkForLocationStopword(req) {
   let csvParser = new csvParse.Parser({delimiter: ','});
   csvParser.write(content, true);
   let chunk;
-  let r = null;
+  let r = {
+    latitude:"",
+    longitude:""
+  };
   while(chunk = csvParser.read()){
     if (req.body.Body.toLowerCase().includes(chunk[0].toLowerCase())) {
         r = {
-          lat:chunk[1],
-          long:chunk[2]
+          latitude:chunk[1],
+          longitude:chunk[2]
         };
     }
   }
@@ -151,7 +171,7 @@ function checkForHumanActivityStopword(req) {
     }
     if (stopword.length > 0 &&
       req.body.Body.toLowerCase().includes(stopword.toLowerCase())) {
-        r = chunk[0];
+        r += chunk[0] + ", ";
     }
   }
   return r;
@@ -164,14 +184,13 @@ function checkForAnimalStopword(req) {
   let chunk;
   let r = "";
   while(chunk = csvParser.read()){
-    console.log(chunk);
     let stopword = chunk[1];
     if (req.session.language !== "English") {
       stopword = chunk[2];
     }
     if (stopword.length > 0 &&
       req.body.Body.toLowerCase().includes(stopword.toLowerCase())) {
-        r = chunk[0];
+        r += chunk[0] + ", ";
     }
   }
   return r;
@@ -184,11 +203,12 @@ router.post('/sms', function(req, res, next) {
   const twiml = new twilio.TwimlResponse();
   let photoIncluded = req.session.photoIncluded || 0;
   let textIncluded = req.session.textIncluded || 0;
-  let sessionId = req.session.id || uuid.v4();
+  let sessionId = req.session.identifier || uuid.v4();
 
-  const minute = 60000;
+  const minute = 120000;
   req.session.cookie.expires = new Date(Date.now() + minute);
   req.session.cookie.maxAge = minute;
+  req.session.identifier = sessionId;
 
   // determine language
   let language = "English";
@@ -220,12 +240,16 @@ router.post('/sms', function(req, res, next) {
         req.session.stateAnon = s.stateAnon;
 
         const location = checkForLocationStopword(req);
-
         const humanActivity = checkForHumanActivityStopword(req);
-        const animal = checkForAnimalStopword(req);
-        console.log("animal "+animal);
+        const animals = checkForAnimalStopword(req);
 
-        createOrUpdateIncident(req);
+        createOrUpdateIncident(req, {
+          longitude: location.longitude,
+          latitude: location.latitude,
+          humanActivity: humanActivity,
+          animals: animals,
+          language: language
+        });
 
         if (message.length >= 3) {
           twiml.message(message);
@@ -248,10 +272,15 @@ router.post('/sms', function(req, res, next) {
 
     const location = checkForLocationStopword(req);
     const humanActivity = checkForHumanActivityStopword(req);
-    const animal = checkForAnimalStopword(req);
-    console.log("animal "+animal);
+    const animals = checkForAnimalStopword(req);
 
-    createOrUpdateIncident(req);
+    createOrUpdateIncident(req, {
+      longitude: location.longitude,
+      latitude: location.latitude,
+      humanActivity: humanActivity,
+      animals: animals,
+      language: language
+    });
 
     if (message.length >= 3) {
       twiml.message(message);
