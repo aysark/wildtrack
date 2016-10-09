@@ -16,6 +16,10 @@ client.on("error", function (err) {
     console.log("Error " + err);
 });
 
+router.get('/', function(req, res, next) {
+  res.send('WILDTRACK');
+});
+
 /* GET home page. */
 router.get('/incidents', function(req, res, next) {
   client.keys("incident_*", function(err, reply) {
@@ -84,8 +88,8 @@ function createOrUpdateIncident(req, data) {
         id: incidentId,
         longitude: data.longitude,
         latitude: data.latitude,
-        humanActivity: reply.humanActivity ? reply.humanActivity+data.humanActivity : "",
-        animals: reply.animals ? reply.animals+data.animals : "",
+        humanActivity: reply.humanActivity ? reply.humanActivity+data.humanActivity : data.humanActivity,
+        animals: reply.animals ? reply.animals+data.animals : data.animals,
         language: data.language
       };
       client.hmset(incidentId, incident, redis.print);
@@ -109,6 +113,8 @@ function determineConversationState(req) {
   let stateWhere = req.session.stateWhere || 0;
   let statePhotoNeeded = req.session.statePhotoNeeded || 0;
   let stateAnon = req.session.stateAnon || 0;
+
+  console.log(stateWhat+"-"+stateWhere+"-"+statePhotoNeeded+"-"+stateAnon);
 
   const localization = {
     "stateWhat": {
@@ -156,6 +162,7 @@ function determineConversationState(req) {
       messageStr = localization["done"][(req.session.language)];
     }
   }
+  console.log("messageStr: "+messageStr);
   return {
     "stateWhat" : stateWhat,
     "stateWhere" : stateWhere,
@@ -176,6 +183,7 @@ function checkForLocationStopword(req) {
   };
   while(chunk = csvParser.read()){
     if (req.body.Body.toLowerCase().includes(chunk[0].toLowerCase())) {
+      console.log(chunk[0]);
         r = {
           latitude:chunk[1],
           longitude:chunk[2]
@@ -218,14 +226,15 @@ function checkForAnimalStopword(req) {
     if (stopword.length > 0 &&
       req.body.Body.toLowerCase().includes(stopword.toLowerCase())) {
         r += chunk[0] + ", ";
+        console.log(r);
     }
   }
   return r;
 }
 
 router.post('/sms', function(req, res, next) {
-  // console.log(req.body);
-  // console.log(req.session);
+  console.log(req.body);
+  console.log(req.session);
 
   const twiml = new twilio.TwimlResponse();
   let sessionIdentifier = req.session.identifier || uuid.v4();
@@ -234,6 +243,10 @@ router.post('/sms', function(req, res, next) {
   req.session.cookie.expires = new Date(Date.now() + minute);
   req.session.cookie.maxAge = minute;
   req.session.identifier = sessionIdentifier;
+
+  if (parseInt(req.body.NumMedia) > 0) {
+    req.session.statePhotoNeeded = 1;
+  }
 
   // determine language
   let language = "English";
@@ -246,7 +259,7 @@ router.post('/sms', function(req, res, next) {
       },
       method: "POST",
       json: {
-        "documents" : [ {
+        "documents" : [{
           "id":"1",
           "text":req.body.Body
         }]
