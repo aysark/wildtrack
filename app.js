@@ -4,6 +4,7 @@ var favicon = require('serve-favicon');
 var logger = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
+var session = require('express-session');
 
 var config = require('./config');
 var twilioNotifications = require('./middleware/twilioNotifications');
@@ -24,6 +25,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(session({ secret: '321481234asdf21348134!(@2940IJDO#()@(#))' }));
 
 app.use('/', routes);
 app.use('/users', users);
