@@ -5,6 +5,7 @@ const uuid = require('uuid');
 const request = require('request');
 const fs = require('fs');
 const csvParse = require('csv-parse');
+const async = require('async');
 
 const twilio = require('twilio');
 
@@ -17,7 +18,22 @@ client.on("error", function (err) {
 
 /* GET home page. */
 router.get('/incidents', function(req, res, next) {
-  res.render('index', { title: 'Express' });
+  client.keys("incident_*", function(err, reply) {
+    if (reply) {
+      let r = [];
+      let total = reply.length;
+      reply.forEach(function(e) {
+        client.hgetall(e, function(err, reply) {
+          r.push(reply);
+          if (r.length == total) {
+            res.json(r);
+          }
+        });
+      });
+    } else {
+      res.json(null);
+    }
+  });
 });
 
 function detectLanguage(text) {

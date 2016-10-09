@@ -1,5 +1,5 @@
-function sms(query, cb) {
-  return fetch(`sms`, {
+function incidents(query, cb) {
+  return fetch(`incidents`, {
     accept: 'application/json',
   }).then(checkStatus)
     .then(parseJSON)
