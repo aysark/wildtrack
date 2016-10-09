@@ -59,7 +59,7 @@ function detectLanguage(text) {
     if (!error && response.statusCode == 200) {
       return body.documents[0].detectedLanguages[0].name
     } else {
-      console.err(body);
+      console.error(body);
     }
   }
 
@@ -296,7 +296,7 @@ router.post('/sms', function(req, res, next) {
           res.end(twiml.toString());
         }
       } else {
-        console.err(body);
+        console.error(body);
       }
     }
     request(options, callback);
